@@ -1,0 +1,35 @@
+﻿flowchart LR
+  INTAPP["Internal Application (Consumer)<br/>(Registered Dev App + Entitlement)"]
+  WEBUI["Compliance Web UI (React)"]
+  APIGEE["Apigee API Proxy<br/>OAuth Verify + Product Enforcement"]
+
+  subgraph OCP["OpenShift (namespace: iam-evidence)"]
+    ROUTE_API["Route: api.iam-evidence.example.com"]
+    SVC_API["Service: github-agent-api"]
+    DEP_API["Deployment: github-agent-api<br/>(Python ADK + GitHub OpenAPI Tools)"]
+    ROUTE_WEB["Route: web.iam-evidence.example.com"]
+    SVC_WEB["Service: compliance-web"]
+    DEP_WEB["Deployment: NGINX (serves React build)"]
+    ROUTE_API --> SVC_API --> DEP_API
+    ROUTE_WEB --> SVC_WEB --> DEP_WEB
+  end
+
+  subgraph CONTRACTS["API Contracts (behind Apigee)"]
+    GE["POST /api/generate-evidence<br/>req: application, scope{orgs,repoPattern?,since?}, controls[]<br/>res: evidenceId, summary, counts, raw"]
+    CP["POST /api/check-policy<br/>req: evidenceId | evidence, policyName, overrides?<br/>res: findings[], pass, score, reportUrl?"]
+    SUBMIT["POST /api/submit<br/>req: application, evidence, attachmentsMeta<br/>res: id, status"]
+    UPX["POST /api/upload-excel<br/>multipart: excel"]
+    UPI["POST /api/upload-images<br/>multipart: images[]"]
+    TPL["GET /api/template<br/>res: csv"]
+    HLTH["GET /health"]
+  end
+
+  %% Flows
+  INTAPP -->|"Bearer <token>"| APIGEE
+  WEBUI -->|"Bearer <token>"| APIGEE
+  APIGEE -->|"TargetEndpoint"| ROUTE_API
+  APIGEE -. "enforces product scopes/quotas" .-> CONTRACTS
+
+  %% ADK tools node (avoids self-loop)
+  ADKTOOLS["GitHub OpenAPI Tools"]
+  DEP_API -. "invokes" .-> ADKTOOLS
